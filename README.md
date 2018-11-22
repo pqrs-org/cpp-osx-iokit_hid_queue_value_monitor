@@ -12,8 +12,8 @@ cpp-osx-iokit_hid_queue_value_monitor depends the following classes.
 - [Nod](https://github.com/fr00b0/nod)
 - [pqrs::cf_run_loop_thread](https://github.com/pqrs-org/cpp-cf_run_loop_thread)
 - [pqrs::dispatcher](https://github.com/pqrs-org/cpp-dispatcher)
+- [pqrs::osx::iokit_hid_device](https://github.com/pqrs-org/cpp-osx-iokit_hid_device)
 - [pqrs::osx::iokit_return](https://github.com/pqrs-org/cpp-osx-iokit_return)
-- [pqrs::osx::iokit_types](https://github.com/pqrs-org/cpp-osx-iokit_types)
 
 ## Install
 
