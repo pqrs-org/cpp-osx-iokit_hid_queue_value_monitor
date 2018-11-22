@@ -62,6 +62,7 @@ int main(void) {
             std::cout << "value:"
                       << IOHIDElementGetUsagePage(e) << "," << IOHIDElementGetUsage(e)
                       << " " << IOHIDValueGetIntegerValue(*value_ptr)
+                      << " (" << CFGetRetainCount(*value_ptr) << ")"
                       << std::endl;
           }
         }
