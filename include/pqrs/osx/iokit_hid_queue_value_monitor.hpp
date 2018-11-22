@@ -12,7 +12,6 @@
 #include <nod/nod.hpp>
 #include <optional>
 #include <pqrs/cf_run_loop_thread.hpp>
-#include <pqrs/cf_string.hpp>
 #include <pqrs/dispatcher.hpp>
 #include <pqrs/osx/iokit_hid_device.hpp>
 #include <pqrs/osx/iokit_return.hpp>
