@@ -56,6 +56,14 @@ int main(void) {
                                                                           *device_ptr);
       monitors[registry_entry_id] = m;
 
+      m->started.connect([registry_entry_id] {
+        std::cout << "started " << registry_entry_id << std::endl;
+      });
+
+      m->stopped.connect([registry_entry_id] {
+        std::cout << "stopped " << registry_entry_id << std::endl;
+      });
+
       m->values_arrived.connect([](auto&& values) {
         for (const auto& value_ptr : *values) {
           if (auto e = IOHIDValueGetElement(*value_ptr)) {
@@ -78,6 +86,7 @@ int main(void) {
   });
 
   hid_manager->device_terminated.connect([&monitors](auto&& registry_entry_id) {
+    std::cout << "device_terminated registry_entry_id:" << registry_entry_id << std::endl;
     monitors.erase(registry_entry_id);
   });
 

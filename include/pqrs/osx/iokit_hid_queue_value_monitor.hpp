@@ -24,6 +24,8 @@ class iokit_hid_queue_value_monitor final : public pqrs::dispatcher::extra::disp
 public:
   // Signals (invoked from the shared dispatcher thread)
 
+  nod::signal<void(void)> started;
+  nod::signal<void(void)> stopped;
   nod::signal<void(std::shared_ptr<std::vector<cf_ptr<IOHIDValueRef>>>)> values_arrived;
   nod::signal<void(const std::string&, iokit_return)> error_occurred;
 
@@ -52,6 +54,8 @@ public:
 
   virtual ~iokit_hid_queue_value_monitor(void) {
     detach_from_dispatcher([this] {
+      stop();
+
       if (hid_device_.get_device()) {
         IOHIDDeviceUnscheduleFromRunLoop(*(hid_device_.get_device()),
                                          cf_run_loop_thread_->get_run_loop(),
@@ -100,6 +104,10 @@ private:
               open_options_ = open_options;
 
               start_queue();
+
+              enqueue_to_dispatcher([this] {
+                started();
+              });
             }
           }
 
@@ -115,6 +123,12 @@ private:
       if (open_options_) {
         IOHIDDeviceClose(*(hid_device_.get_device()),
                          *open_options_);
+
+        open_options_ = std::nullopt;
+
+        enqueue_to_dispatcher([this] {
+          stopped();
+        });
       }
     }
 
