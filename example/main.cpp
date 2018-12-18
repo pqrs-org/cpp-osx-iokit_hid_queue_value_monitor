@@ -103,6 +103,7 @@ int main(void) {
   // ============================================================
 
   hid_manager = nullptr;
+  monitors.clear();
 
   pqrs::dispatcher::extra::terminate_shared_dispatcher();
 
