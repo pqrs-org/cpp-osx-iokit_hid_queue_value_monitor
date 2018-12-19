@@ -39,7 +39,9 @@ public:
                                                          last_open_error_(kIOReturnSuccess) {
     cf_run_loop_thread_ = std::make_unique<cf_run_loop_thread>();
 
-    enqueue_to_dispatcher([this] {
+    // Schedule device
+
+    cf_run_loop_thread_->enqueue(^{
       if (hid_device_.get_device()) {
         IOHIDDeviceRegisterRemovalCallback(*(hid_device_.get_device()),
                                            static_device_removal_callback,
@@ -55,7 +57,14 @@ public:
   }
 
   virtual ~iokit_hid_queue_value_monitor(void) {
-    detach_from_dispatcher([this] {
+    // dispatcher_client
+
+    detach_from_dispatcher([] {
+    });
+
+    // cf_run_loop_thread
+
+    cf_run_loop_thread_->enqueue(^{
       stop();
 
       if (hid_device_.get_device()) {
@@ -77,51 +86,50 @@ public:
 
   void async_start(IOOptionBits open_options,
                    std::chrono::milliseconds open_timer_interval) {
-    enqueue_to_dispatcher([this, open_options, open_timer_interval] {
-      start(open_options, open_timer_interval);
-    });
+    open_timer_.start(
+        [this, open_options] {
+          cf_run_loop_thread_->enqueue(^{
+            start(open_options);
+          });
+        },
+        open_timer_interval);
   }
 
   void async_stop(void) {
-    enqueue_to_dispatcher([this] {
+    cf_run_loop_thread_->enqueue(^{
       stop();
     });
   }
 
 private:
-  bool start(IOOptionBits open_options,
-             std::chrono::milliseconds open_timer_interval) {
-    open_timer_.start(
-        [this, open_options] {
-          if (hid_device_.get_device()) {
-            if (!open_options_) {
-              iokit_return r = IOHIDDeviceOpen(*(hid_device_.get_device()),
-                                               open_options);
-              if (!r) {
-                if (last_open_error_ != r) {
-                  last_open_error_ = r;
-                  enqueue_to_dispatcher([this, r] {
-                    error_occurred("IOHIDDeviceOpen is failed.", r);
-                  });
-                }
-
-                // Retry
-                return;
-              }
-
-              open_options_ = open_options;
-
-              start_queue();
-
-              enqueue_to_dispatcher([this] {
-                started();
-              });
-            }
+  bool start(IOOptionBits open_options) {
+    if (hid_device_.get_device()) {
+      if (!open_options_) {
+        iokit_return r = IOHIDDeviceOpen(*(hid_device_.get_device()),
+                                         open_options);
+        if (!r) {
+          if (last_open_error_ != r) {
+            last_open_error_ = r;
+            enqueue_to_dispatcher([this, r] {
+              error_occurred("IOHIDDeviceOpen is failed.", r);
+            });
           }
 
-          open_timer_.stop();
-        },
-        open_timer_interval);
+          // Retry
+          return;
+        }
+
+        open_options_ = open_options;
+
+        start_queue();
+
+        enqueue_to_dispatcher([this] {
+          started();
+        });
+      }
+    }
+
+    open_timer_.stop();
   }
 
   void stop(void) {
@@ -170,6 +178,8 @@ private:
     if (queue_) {
       IOHIDQueueStop(*queue_);
 
+      // IOHIDQueueUnscheduleFromRunLoop might cause SIGSEGV if it is not called in cf_run_loop_thread_.
+
       IOHIDQueueUnscheduleFromRunLoop(*queue_,
                                       cf_run_loop_thread_->get_run_loop(),
                                       kCFRunLoopCommonModes);
@@ -213,7 +223,7 @@ private:
   }
 
   void queue_value_available_callback(void) {
-    enqueue_to_dispatcher([this] {
+    cf_run_loop_thread_->enqueue(^{
       if (queue_) {
         auto values = std::make_shared<std::vector<cf_ptr<IOHIDValueRef>>>();
 
