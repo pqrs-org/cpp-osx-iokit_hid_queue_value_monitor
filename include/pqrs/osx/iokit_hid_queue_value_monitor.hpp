@@ -200,7 +200,9 @@ private:
       return;
     }
 
-    self->device_removal_callback();
+    self->cf_run_loop_thread_->enqueue(^{
+      self->device_removal_callback();
+    });
   }
 
   void device_removal_callback(void) {
@@ -219,25 +221,25 @@ private:
       return;
     }
 
-    self->queue_value_available_callback();
+    self->cf_run_loop_thread_->enqueue(^{
+      self->queue_value_available_callback();
+    });
   }
 
   void queue_value_available_callback(void) {
-    cf_run_loop_thread_->enqueue(^{
-      if (queue_) {
-        auto values = std::make_shared<std::vector<cf_ptr<IOHIDValueRef>>>();
+    if (queue_) {
+      auto values = std::make_shared<std::vector<cf_ptr<IOHIDValueRef>>>();
 
-        while (auto v = IOHIDQueueCopyNextValueWithTimeout(*queue_, 0.0)) {
-          values->emplace_back(v);
+      while (auto v = IOHIDQueueCopyNextValueWithTimeout(*queue_, 0.0)) {
+        values->emplace_back(v);
 
-          CFRelease(v);
-        }
-
-        enqueue_to_dispatcher([this, values] {
-          values_arrived(values);
-        });
+        CFRelease(v);
       }
-    });
+
+      enqueue_to_dispatcher([this, values] {
+        values_arrived(values);
+      });
+    }
   }
 
   iokit_hid_device hid_device_;
