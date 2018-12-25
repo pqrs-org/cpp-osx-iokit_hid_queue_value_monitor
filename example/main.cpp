@@ -10,11 +10,12 @@ auto global_wait = pqrs::make_thread_wait();
 }
 
 int main(void) {
-  pqrs::dispatcher::extra::initialize_shared_dispatcher();
-
   std::signal(SIGINT, [](int) {
     global_wait->notify();
   });
+
+  auto time_source = std::make_shared<pqrs::dispatcher::hardware_time_source>();
+  auto dispatcher = std::make_shared<pqrs::dispatcher::dispatcher>(time_source);
 
   std::unordered_map<pqrs::osx::iokit_registry_entry_id, std::shared_ptr<pqrs::osx::iokit_hid_queue_value_monitor>> monitors;
 
@@ -32,10 +33,10 @@ int main(void) {
           pqrs::osx::iokit_hid_usage_generic_desktop_pointer),
   };
 
-  auto hid_manager = std::make_unique<pqrs::osx::iokit_hid_manager>(pqrs::dispatcher::extra::get_shared_dispatcher(),
+  auto hid_manager = std::make_unique<pqrs::osx::iokit_hid_manager>(dispatcher,
                                                                     matching_dictionaries);
 
-  hid_manager->device_matched.connect([&monitors](auto&& registry_entry_id, auto&& device_ptr) {
+  hid_manager->device_matched.connect([dispatcher, &monitors](auto&& registry_entry_id, auto&& device_ptr) {
     if (device_ptr) {
       auto hid_device = pqrs::osx::iokit_hid_device(*device_ptr);
       std::cout << "device_matched registry_entry_id:" << registry_entry_id << std::endl;
@@ -52,7 +53,7 @@ int main(void) {
         std::cout << "  product_id:" << *product_id << std::endl;
       }
 
-      auto m = std::make_shared<pqrs::osx::iokit_hid_queue_value_monitor>(pqrs::dispatcher::extra::get_shared_dispatcher(),
+      auto m = std::make_shared<pqrs::osx::iokit_hid_queue_value_monitor>(dispatcher,
                                                                           *device_ptr);
       monitors[registry_entry_id] = m;
 
@@ -105,7 +106,8 @@ int main(void) {
   hid_manager = nullptr;
   monitors.clear();
 
-  pqrs::dispatcher::extra::terminate_shared_dispatcher();
+  dispatcher->terminate();
+  dispatcher = nullptr;
 
   std::cout << "finished" << std::endl;
 
