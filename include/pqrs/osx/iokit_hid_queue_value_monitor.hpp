@@ -103,7 +103,7 @@ public:
   }
 
 private:
-  bool start(IOOptionBits open_options) {
+  void start(IOOptionBits open_options) {
     if (hid_device_.get_device()) {
       if (!open_options_) {
         iokit_return r = IOHIDDeviceOpen(*(hid_device_.get_device()),
