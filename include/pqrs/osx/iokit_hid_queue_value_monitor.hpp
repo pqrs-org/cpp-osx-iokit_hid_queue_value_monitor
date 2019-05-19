@@ -104,6 +104,8 @@ public:
 private:
   void start(IOOptionBits open_options) {
     if (hid_device_.get_device()) {
+      start_queue();
+
       if (!open_options_) {
         iokit_return r = IOHIDDeviceOpen(*(hid_device_.get_device()),
                                          open_options);
@@ -120,8 +122,6 @@ private:
         }
 
         open_options_ = open_options;
-
-        start_queue();
 
         enqueue_to_dispatcher([this] {
           started();
