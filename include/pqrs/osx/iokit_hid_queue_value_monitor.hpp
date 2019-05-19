@@ -104,6 +104,7 @@ public:
 private:
   void start(IOOptionBits open_options) {
     if (hid_device_.get_device()) {
+      // Start queue before `IOHIDDeviceOpen` in order to avoid events drop.
       start_queue();
 
       if (!open_options_) {
