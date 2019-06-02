@@ -1,6 +1,6 @@
 #pragma once
 
-// pqrs::iokit_hid_manager v2.5
+// pqrs::iokit_hid_manager v2.6
 
 // (C) Copyright Takayama Fumihiko 2018.
 // Distributed under the Boost Software License, Version 1.0.
@@ -50,6 +50,12 @@ public:
   void async_rescan(void) {
     enqueue_to_dispatcher([this] {
       rescan();
+    });
+  }
+
+  void async_set_device_matched_delay(pqrs::dispatcher::duration value) {
+    enqueue_to_dispatcher([this, value] {
+      device_matched_delay_ = value;
     });
   }
 
