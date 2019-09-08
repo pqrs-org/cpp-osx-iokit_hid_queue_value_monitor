@@ -237,6 +237,15 @@ private:
         CFRelease(v);
       }
 
+      // macOS Catalina (10.15) call the `ValueAvailableCallback`
+      // even if `IOHIDDeviceOpen` is failed. (A bug of macOS)
+      // Thus, we should ignore the events when `IOHIDDeviceOpen` is failed.
+      // (== open_options_ == std::nullopt)
+
+      if (!open_options_) {
+        return;
+      }
+
       enqueue_to_dispatcher([this, values] {
         values_arrived(values);
       });
