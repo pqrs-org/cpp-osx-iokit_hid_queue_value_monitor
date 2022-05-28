@@ -1,21 +1,26 @@
-#define CATCH_CONFIG_MAIN
-#include <catch2/catch.hpp>
-
+#include <boost/ut.hpp>
 #include <pqrs/osx/iokit_hid_queue_value_monitor.hpp>
 
-TEST_CASE("iokit_hid_queue_value_monitor") {
-  auto time_source = std::make_shared<pqrs::dispatcher::hardware_time_source>();
-  auto dispatcher = std::make_shared<pqrs::dispatcher::dispatcher>(time_source);
+int main(void) {
+  using namespace boost::ut;
+  using namespace boost::ut::literals;
 
-  auto monitor = std::make_unique<pqrs::osx::iokit_hid_queue_value_monitor>(dispatcher,
-                                                                            nullptr);
+  "iokit_hid_queue_value_monitor"_test = [] {
+    auto time_source = std::make_shared<pqrs::dispatcher::hardware_time_source>();
+    auto dispatcher = std::make_shared<pqrs::dispatcher::dispatcher>(time_source);
 
-  monitor->async_start(kIOHIDOptionsTypeNone,
-                       std::chrono::milliseconds(3000));
-  monitor->async_stop();
+    auto monitor = std::make_unique<pqrs::osx::iokit_hid_queue_value_monitor>(dispatcher,
+                                                                              nullptr);
 
-  monitor = nullptr;
+    monitor->async_start(kIOHIDOptionsTypeNone,
+                         std::chrono::milliseconds(3000));
+    monitor->async_stop();
 
-  dispatcher->terminate();
-  dispatcher = nullptr;
+    monitor = nullptr;
+
+    dispatcher->terminate();
+    dispatcher = nullptr;
+  };
+
+  return 0;
 }
