@@ -8,8 +8,10 @@ int main(void) {
   "iokit_hid_queue_value_monitor"_test = [] {
     auto time_source = std::make_shared<pqrs::dispatcher::hardware_time_source>();
     auto dispatcher = std::make_shared<pqrs::dispatcher::dispatcher>(time_source);
+    auto run_loop_thread = std::make_shared<pqrs::cf::run_loop_thread>();
 
     auto monitor = std::make_unique<pqrs::osx::iokit_hid_queue_value_monitor>(dispatcher,
+                                                                              run_loop_thread,
                                                                               nullptr);
 
     monitor->async_start(kIOHIDOptionsTypeNone,
@@ -17,6 +19,9 @@ int main(void) {
     monitor->async_stop();
 
     monitor = nullptr;
+
+    run_loop_thread->terminate();
+    run_loop_thread = nullptr;
 
     dispatcher->terminate();
     dispatcher = nullptr;
