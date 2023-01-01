@@ -16,6 +16,7 @@ int main(void) {
 
   auto time_source = std::make_shared<pqrs::dispatcher::hardware_time_source>();
   auto dispatcher = std::make_shared<pqrs::dispatcher::dispatcher>(time_source);
+  auto run_loop_thread = std::make_shared<pqrs::cf::run_loop_thread>();
 
   std::unordered_map<pqrs::osx::iokit_registry_entry_id::value_t, std::shared_ptr<pqrs::osx::iokit_hid_queue_value_monitor>> monitors;
 
@@ -34,6 +35,7 @@ int main(void) {
   };
 
   auto hid_manager = std::make_unique<pqrs::osx::iokit_hid_manager>(dispatcher,
+                                                                    run_loop_thread,
                                                                     matching_dictionaries);
 
   hid_manager->device_matched.connect([dispatcher, &monitors](auto&& registry_entry_id, auto&& device_ptr) {
@@ -105,6 +107,9 @@ int main(void) {
 
   hid_manager = nullptr;
   monitors.clear();
+
+  run_loop_thread->terminate();
+  run_loop_thread = nullptr;
 
   dispatcher->terminate();
   dispatcher = nullptr;
