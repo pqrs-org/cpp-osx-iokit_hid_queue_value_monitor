@@ -38,7 +38,7 @@ int main(void) {
                                                                     run_loop_thread,
                                                                     matching_dictionaries);
 
-  hid_manager->device_matched.connect([dispatcher, &monitors](auto&& registry_entry_id, auto&& device_ptr) {
+  hid_manager->device_matched.connect([dispatcher, run_loop_thread, &monitors](auto&& registry_entry_id, auto&& device_ptr) {
     if (device_ptr) {
       auto hid_device = pqrs::osx::iokit_hid_device(*device_ptr);
       std::cout << "device_matched registry_entry_id:" << registry_entry_id << std::endl;
@@ -56,6 +56,7 @@ int main(void) {
       }
 
       auto m = std::make_shared<pqrs::osx::iokit_hid_queue_value_monitor>(dispatcher,
+                                                                          run_loop_thread,
                                                                           *device_ptr);
       monitors[registry_entry_id] = m;
 
