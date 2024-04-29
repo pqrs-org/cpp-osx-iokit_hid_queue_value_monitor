@@ -48,18 +48,20 @@ public:
     auto wait = make_thread_wait();
 
     run_loop_thread_->enqueue(^{
-      if (hid_device_.get_device()) {
-        IOHIDDeviceRegisterRemovalCallback(*(hid_device_.get_device()),
+      if (auto d = hid_device_.get_device()) {
+        IOHIDDeviceRegisterRemovalCallback(*d,
                                            static_device_removal_callback,
                                            this);
 
-        IOHIDDeviceScheduleWithRunLoop(*(hid_device_.get_device()),
+        IOHIDDeviceScheduleWithRunLoop(*d,
                                        run_loop_thread_->get_run_loop(),
                                        kCFRunLoopCommonModes);
       }
 
       wait->notify();
     });
+
+    wait->wait_notice();
   }
 
   virtual ~iokit_hid_queue_value_monitor(void) {
@@ -78,16 +80,14 @@ public:
     run_loop_thread_->enqueue(^{
       stop({.check_requested_open_options = false});
 
-      if (hid_device_.get_device()) {
-        IOHIDDeviceUnscheduleFromRunLoop(*(hid_device_.get_device()),
+      if (auto d = hid_device_.get_device()) {
+        IOHIDDeviceUnscheduleFromRunLoop(*d,
                                          run_loop_thread_->get_run_loop(),
                                          kCFRunLoopCommonModes);
       }
 
       wait->notify();
     });
-
-    // Wait until all tasks are processed
 
     wait->wait_notice();
   }
