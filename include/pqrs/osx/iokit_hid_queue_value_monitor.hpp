@@ -95,10 +95,16 @@ public:
 
   void async_start(IOOptionBits open_options,
                    std::chrono::milliseconds open_timer_interval) {
+    run_loop_thread_->enqueue(^{
+      std::lock_guard<std::mutex> lock(open_options_mutex_);
+
+      requested_open_options_ = open_options;
+    });
+
     open_timer_.start(
-        [this, open_options] {
+        [this] {
           run_loop_thread_->enqueue(^{
-            start(open_options);
+            start();
           });
         },
         open_timer_interval);
@@ -106,59 +112,129 @@ public:
 
   void async_stop(void) {
     run_loop_thread_->enqueue(^{
+      {
+        std::lock_guard<std::mutex> lock(open_options_mutex_);
+
+        requested_open_options_ = std::nullopt;
+      }
+
       stop();
     });
   }
 
+  bool seized() const {
+    std::lock_guard<std::mutex> lock(open_options_mutex_);
+
+    return current_open_options_ != std::nullopt
+               ? (*current_open_options_ & kIOHIDOptionsTypeSeizeDevice)
+               : false;
+  }
+
 private:
-  void start(IOOptionBits open_options) {
-    if (hid_device_.get_device()) {
+  void start(void) {
+    bool needs_stop = false;
+    IOOptionBits open_options = kIOHIDOptionsTypeNone;
+
+    auto device = hid_device_.get_device();
+    if (!device) {
+      goto finish;
+    }
+
+    //
+    // Check requested_open_options_
+    //
+
+    {
+      std::lock_guard<std::mutex> lock(open_options_mutex_);
+
+      if (requested_open_options_ == std::nullopt ||
+          requested_open_options_ == current_open_options_) {
+        goto finish;
+      }
+
+      if (current_open_options_) {
+        needs_stop = true;
+      }
+
+      open_options = *requested_open_options_;
+    }
+
+    if (needs_stop) {
+      stop();
+    }
+
+    //
+    // Open the device
+    //
+
+    {
       // Start queue before `IOHIDDeviceOpen` in order to avoid events drop.
       start_queue();
 
-      if (!open_options_) {
-        iokit_return r = IOHIDDeviceOpen(*(hid_device_.get_device()),
-                                         open_options);
-        if (!r) {
-          if (last_open_error_ != r) {
-            last_open_error_ = r;
-            enqueue_to_dispatcher([this, r] {
-              error_occurred("IOHIDDeviceOpen is failed.", r);
-            });
-          }
-
-          // Retry
-          return;
+      iokit_return r = IOHIDDeviceOpen(*device,
+                                       open_options);
+      if (!r) {
+        if (last_open_error_ != r) {
+          last_open_error_ = r;
+          enqueue_to_dispatcher([this, r] {
+            error_occurred("IOHIDDeviceOpen is failed.", r);
+          });
         }
 
-        open_options_ = open_options;
-
-        enqueue_to_dispatcher([this] {
-          started();
-        });
+        // Retry
+        return;
       }
     }
 
+    {
+      std::lock_guard<std::mutex> lock(open_options_mutex_);
+
+      current_open_options_ = requested_open_options_;
+    }
+
+    enqueue_to_dispatcher([this] {
+      started();
+    });
+
+  finish:
     open_timer_.stop();
   }
 
   void stop(void) {
-    if (hid_device_.get_device()) {
-      stop_queue();
+    IOOptionBits open_options = kIOHIDOptionsTypeNone;
 
-      if (open_options_) {
-        IOHIDDeviceClose(*(hid_device_.get_device()),
-                         *open_options_);
-
-        open_options_ = std::nullopt;
-
-        enqueue_to_dispatcher([this] {
-          stopped();
-        });
-      }
+    auto device = hid_device_.get_device();
+    if (!device) {
+      goto finish;
     }
 
-    open_timer_.stop();
+    {
+      std::lock_guard<std::mutex> lock(open_options_mutex_);
+
+      if (current_open_options_ == std::nullopt) {
+        goto finish;
+      }
+
+      open_options = *current_open_options_;
+    }
+
+    stop_queue();
+
+    IOHIDDeviceClose(*device,
+                     open_options);
+
+    enqueue_to_dispatcher([this] {
+      stopped();
+    });
+
+  finish:
+    // Since `stop()` can be called from within `start()`, we must not stop `open_timer_` here
+    // in order to preserve the retry when `IOHIDDeviceOpen` error.
+    {
+      std::lock_guard<std::mutex> lock(open_options_mutex_);
+
+      current_open_options_ = std::nullopt;
+    }
   }
 
   void start_queue(void) {
@@ -251,8 +327,12 @@ private:
       // Thus, we should ignore the events when `IOHIDDeviceOpen` is failed.
       // (== open_options_ == std::nullopt)
 
-      if (!open_options_) {
-        return;
+      {
+        std::lock_guard<std::mutex> lock(open_options_mutex_);
+
+        if (!current_open_options_) {
+          return;
+        }
       }
 
       enqueue_to_dispatcher([this, values] {
@@ -266,7 +346,9 @@ private:
   iokit_hid_device hid_device_;
   bool device_scheduled_;
   dispatcher::extra::timer open_timer_;
-  std::optional<IOOptionBits> open_options_;
+  std::optional<IOOptionBits> requested_open_options_;
+  std::optional<IOOptionBits> current_open_options_;
+  mutable std::mutex open_options_mutex_;
   iokit_return last_open_error_;
   cf::cf_ptr<IOHIDQueueRef> queue_;
 };
