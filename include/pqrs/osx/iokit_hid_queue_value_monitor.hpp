@@ -41,10 +41,11 @@ public:
       : dispatcher_client(weak_dispatcher),
         run_loop_thread_(run_loop_thread),
         hid_device_(device),
-        device_scheduled_(false),
         open_timer_(*this),
         last_open_error_(kIOReturnSuccess) {
     // Schedule device
+
+    auto wait = make_thread_wait();
 
     run_loop_thread_->enqueue(^{
       if (hid_device_.get_device()) {
@@ -55,70 +56,70 @@ public:
         IOHIDDeviceScheduleWithRunLoop(*(hid_device_.get_device()),
                                        run_loop_thread_->get_run_loop(),
                                        kCFRunLoopCommonModes);
-
-        device_scheduled_ = true;
       }
+
+      wait->notify();
     });
   }
 
   virtual ~iokit_hid_queue_value_monitor(void) {
+    //
     // dispatcher_client
+    //
 
     detach_from_dispatcher();
 
+    //
     // run_loop_thread
+    //
+
+    auto wait = make_thread_wait();
 
     run_loop_thread_->enqueue(^{
-      stop();
+      stop({.check_requested_open_options = false});
 
       if (hid_device_.get_device()) {
-        // Note:
-        // IOHIDDeviceUnscheduleFromRunLoop causes SIGILL if IOHIDDeviceScheduleWithRunLoop is not called before.
-        // Thus, we have to check the state by `device_scheduled_`.
-
-        if (device_scheduled_) {
-          IOHIDDeviceUnscheduleFromRunLoop(*(hid_device_.get_device()),
-                                           run_loop_thread_->get_run_loop(),
-                                           kCFRunLoopCommonModes);
-        }
+        IOHIDDeviceUnscheduleFromRunLoop(*(hid_device_.get_device()),
+                                         run_loop_thread_->get_run_loop(),
+                                         kCFRunLoopCommonModes);
       }
+
+      wait->notify();
     });
 
     // Wait until all tasks are processed
 
-    auto wait = make_thread_wait();
-    run_loop_thread_->enqueue(^{
-      wait->notify();
-    });
     wait->wait_notice();
   }
 
   void async_start(IOOptionBits open_options,
                    std::chrono::milliseconds open_timer_interval) {
-    run_loop_thread_->enqueue(^{
+    {
       std::lock_guard<std::mutex> lock(open_options_mutex_);
 
       requested_open_options_ = open_options;
-    });
+    }
 
-    open_timer_.start(
-        [this] {
-          run_loop_thread_->enqueue(^{
-            start();
-          });
-        },
-        open_timer_interval);
+    run_loop_thread_->enqueue(^{
+      open_timer_.start(
+          [this] {
+            run_loop_thread_->enqueue(^{
+              start();
+            });
+          },
+          open_timer_interval);
+    });
   }
 
   void async_stop(void) {
+    {
+      std::lock_guard<std::mutex> lock(open_options_mutex_);
+
+      requested_open_options_ = std::nullopt;
+    }
+
     run_loop_thread_->enqueue(^{
-      {
-        std::lock_guard<std::mutex> lock(open_options_mutex_);
-
-        requested_open_options_ = std::nullopt;
-      }
-
-      stop();
+      stop({.check_requested_open_options = true});
     });
   }
 
@@ -160,17 +161,17 @@ private:
     }
 
     if (needs_stop) {
-      stop();
+      stop({.check_requested_open_options = false});
     }
 
     //
     // Open the device
     //
 
-    {
-      // Start queue before `IOHIDDeviceOpen` in order to avoid events drop.
-      start_queue();
+    // Start queue before `IOHIDDeviceOpen` in order to avoid events drop.
+    start_queue();
 
+    {
       iokit_return r = IOHIDDeviceOpen(*device,
                                        open_options);
       if (!r) {
@@ -200,7 +201,10 @@ private:
     open_timer_.stop();
   }
 
-  void stop(void) {
+  struct stop_arguments {
+    bool check_requested_open_options;
+  };
+  void stop(stop_arguments args) {
     IOOptionBits open_options = kIOHIDOptionsTypeNone;
 
     auto device = hid_device_.get_device();
@@ -215,6 +219,11 @@ private:
         goto finish;
       }
 
+      if (args.check_requested_open_options &&
+          requested_open_options_ != std::nullopt) {
+        goto finish;
+      }
+
       open_options = *current_open_options_;
     }
 
@@ -223,6 +232,12 @@ private:
     IOHIDDeviceClose(*device,
                      open_options);
 
+    {
+      std::lock_guard<std::mutex> lock(open_options_mutex_);
+
+      current_open_options_ = std::nullopt;
+    }
+
     enqueue_to_dispatcher([this] {
       stopped();
     });
@@ -230,11 +245,6 @@ private:
   finish:
     // Since `stop()` can be called from within `start()`, we must not stop `open_timer_` here
     // in order to preserve the retry when `IOHIDDeviceOpen` error.
-    {
-      std::lock_guard<std::mutex> lock(open_options_mutex_);
-
-      current_open_options_ = std::nullopt;
-    }
   }
 
   void start_queue(void) {
@@ -286,13 +296,11 @@ private:
       return;
     }
 
-    self->run_loop_thread_->enqueue(^{
-      self->device_removal_callback();
-    });
+    self->device_removal_callback();
   }
 
   void device_removal_callback(void) {
-    stop();
+    stop({.check_requested_open_options = false});
   }
 
   static void static_queue_value_available_callback(void* context,
@@ -307,9 +315,7 @@ private:
       return;
     }
 
-    self->run_loop_thread_->enqueue(^{
-      self->queue_value_available_callback();
-    });
+    self->queue_value_available_callback();
   }
 
   void queue_value_available_callback(void) {
@@ -344,7 +350,6 @@ private:
   std::shared_ptr<cf::run_loop_thread> run_loop_thread_;
 
   iokit_hid_device hid_device_;
-  bool device_scheduled_;
   dispatcher::extra::timer open_timer_;
   std::optional<IOOptionBits> requested_open_options_;
   std::optional<IOOptionBits> current_open_options_;
