@@ -205,23 +205,26 @@ private:
     bool check_requested_open_options;
   };
   void stop(stop_arguments args) {
+    // Since `stop()` can be called from within `start()`,
+    // we must not stop `open_timer_` in `stop()` in order to preserve the retry when `IOHIDDeviceOpen` error.
+
     IOOptionBits open_options = kIOHIDOptionsTypeNone;
 
     auto device = hid_device_.get_device();
     if (!device) {
-      goto finish;
+      return;
     }
 
     {
       std::lock_guard<std::mutex> lock(open_options_mutex_);
 
       if (current_open_options_ == std::nullopt) {
-        goto finish;
+        return;
       }
 
       if (args.check_requested_open_options &&
           requested_open_options_ != std::nullopt) {
-        goto finish;
+        return;
       }
 
       open_options = *current_open_options_;
@@ -241,10 +244,6 @@ private:
     enqueue_to_dispatcher([this] {
       stopped();
     });
-
-  finish:
-    // Since `stop()` can be called from within `start()`, we must not stop `open_timer_` here
-    // in order to preserve the retry when `IOHIDDeviceOpen` error.
   }
 
   void start_queue(void) {
