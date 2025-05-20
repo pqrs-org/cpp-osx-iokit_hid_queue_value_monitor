@@ -1,5 +1,0 @@
-fr00b0/nod
-pqrs-org/cpp-dispatcher
-pqrs-org/cpp-osx-iokit_hid_device
-pqrs-org/cpp-osx-iokit_hid_manager
-pqrs-org/cpp-osx-iokit_return
