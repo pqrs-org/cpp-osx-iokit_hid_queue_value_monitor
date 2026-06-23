@@ -1,7 +1,7 @@
 #include <boost/ut.hpp>
 #include <pqrs/osx/iokit_hid_queue_value_monitor.hpp>
 
-int main(void) {
+int main() {
   using namespace boost::ut;
   using namespace boost::ut::literals;
 
@@ -13,10 +13,12 @@ int main(void) {
     auto monitor = std::make_unique<pqrs::osx::iokit_hid_queue_value_monitor>(dispatcher,
                                                                               run_loop_thread,
                                                                               nullptr);
+    expect(!monitor->seized());
 
     monitor->async_start(kIOHIDOptionsTypeNone,
                          std::chrono::milliseconds(3000));
     monitor->async_stop();
+    expect(!monitor->seized());
 
     monitor = nullptr;
 

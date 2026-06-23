@@ -9,7 +9,7 @@ namespace {
 auto global_wait = pqrs::make_thread_wait();
 }
 
-int main(void) {
+int main() {
   std::signal(SIGINT, [](int) {
     global_wait->notify();
   });
@@ -18,7 +18,7 @@ int main(void) {
   auto dispatcher = std::make_shared<pqrs::dispatcher::dispatcher>(time_source);
   auto run_loop_thread = std::make_shared<pqrs::cf::run_loop_thread>();
 
-  std::unordered_map<pqrs::osx::iokit_registry_entry_id::value_t, std::shared_ptr<pqrs::osx::iokit_hid_queue_value_monitor>> monitors;
+  std::unordered_map<pqrs::osx::iokit_registry_entry_id::value_t, pqrs::not_null_shared_ptr_t<pqrs::osx::iokit_hid_queue_value_monitor>> monitors;
 
   std::vector<pqrs::cf::cf_ptr<CFDictionaryRef>> matching_dictionaries{
       pqrs::osx::iokit_hid_manager::make_matching_dictionary(
@@ -58,7 +58,7 @@ int main(void) {
       auto m = std::make_shared<pqrs::osx::iokit_hid_queue_value_monitor>(dispatcher,
                                                                           run_loop_thread,
                                                                           *device_ptr);
-      monitors[registry_entry_id] = m;
+      monitors.insert_or_assign(registry_entry_id, m);
 
       m->started.connect([registry_entry_id] {
         std::cout << "started " << registry_entry_id << std::endl;
